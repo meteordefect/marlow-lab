@@ -52,6 +52,12 @@ const PAGE = `<!DOCTYPE html>
     article.desk { margin-right: 8%; background: var(--paper); border: 1px solid var(--line); }
     article p { margin: 0; }
     .tool { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
+    article.wait p { color: var(--muted); }
+    .dots { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; }
+    .dots i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: block; animation: blink 1.2s infinite; }
+    .dots i:nth-child(2) { animation-delay: 0.2s; }
+    .dots i:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
     .quote { margin-top: 10px; padding-left: 12px; border-left: 2px solid var(--ink); font-size: 20px; line-height: 1.35; }
     .composer { display: flex; gap: 8px; align-items: end; margin-top: 8px; }
     .composer textarea { flex: 1; }
@@ -86,6 +92,7 @@ const PAGE = `<!DOCTYPE html>
     .foot { margin-top: 48px; color: var(--muted); font-size: 14px; line-height: 20px; }
     @media (prefers-reduced-motion: reduce) {
       .feature, .good { transition: none; }
+      .dots i { animation: none; opacity: 1; }
     }
     @media (max-width: 720px) {
       .cards, .goods, .hero { grid-template-columns: 1fr; }
@@ -281,20 +288,49 @@ function add(role, text, tool, quote) {
   if (quote) { const quoted = document.createElement("p"); quoted.className = "quote"; quoted.textContent = quote; item.appendChild(quoted); }
   log.appendChild(item);
   item.scrollIntoView({ block: "nearest" });
+  return item;
+}
+function waiting() {
+  const item = add("desk wait", "", "", "");
+  const line = document.createElement("p");
+  line.textContent = "Looking that up";
+  const dots = document.createElement("span");
+  dots.className = "dots";
+  dots.setAttribute("aria-hidden", "true");
+  dots.append(document.createElement("i"), document.createElement("i"), document.createElement("i"));
+  line.appendChild(dots);
+  item.appendChild(line);
+  return item;
 }
 input.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); }
 });
+const send = form.querySelector("button");
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = input.value.trim();
-  if (!text) return;
+  if (!text || send.disabled) return;
   input.value = "";
   add("you", text, "", "");
-  const response = await fetch("/ask", { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify({ text }) });
-  if (!response.ok) { add("desk", "Support is not answering.", "", ""); return; }
-  const data = await response.json();
-  add("desk", data.text, data.tool, data.quote);
+  const pending = waiting();
+  send.disabled = true;
+  input.disabled = true;
+  try {
+    const response = await fetch("/ask", { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify({ text }) });
+    pending.remove();
+    if (!response.ok) add("desk", "Support is not answering.", "", "");
+    else {
+      const data = await response.json();
+      add("desk", data.text, data.tool, data.quote);
+    }
+  } catch {
+    pending.remove();
+    add("desk", "Support is not answering.", "", "");
+  } finally {
+    send.disabled = false;
+    input.disabled = false;
+    input.focus();
+  }
 });
 </script>`,
     customer,
