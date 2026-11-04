@@ -70,7 +70,7 @@ const PAGE = `<!DOCTYPE html>
     .feature { display: block; padding: 0; overflow: hidden; }
     .feature:hover, .good:hover { background: #f7f1e6; }
     .feature:active, .good:active { transform: scale(0.98); }
-    .good img, .feature img, .shot { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--bg); }
+    .good img, .feature img, .shot { width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; display: block; background: var(--bg); }
     .shot { width: min(100%, 420px); border: 1px solid var(--line); border-radius: 12px; margin: 0 0 24px; }
     .pad { padding: 16px; display: flex; flex-direction: column; flex: 1; }
     .kicker { margin: 0 0 8px; color: var(--muted); font-size: 14px; line-height: 20px; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -150,7 +150,7 @@ function money(price) {
 
 function photo(good, className) {
   const cls = className ? ` class="${className}"` : "";
-  return `<img${cls} src="/media/${good.slug}.webp" alt="${esc(good.name)}" width="800" height="800">`;
+  return `<img${cls} src="/media/${good.slug}.webp" alt="${esc(good.name)}" width="1024" height="1024">`;
 }
 
 function goodCard(good) {
