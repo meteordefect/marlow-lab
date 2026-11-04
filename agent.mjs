@@ -1,0 +1,105 @@
+import { generateText, stepCountIs, tool } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { z } from "zod";
+import { ordersForSession, searchRecords } from "./db.mjs";
+
+export function modelConfig() {
+  const apiKey = process.env.MARLOW_API_KEY || process.env.OPENCODE_API_KEY || "";
+  const baseURL = process.env.MARLOW_BASE_URL || "https://opencode.ai/inference/go/openai/v1";
+  const modelId = process.env.MARLOW_MODEL || "glm-5.3-flash";
+  return { apiKey, baseURL, modelId };
+}
+
+export async function answer(db, customer, history, text, scope) {
+  const { apiKey, baseURL, modelId } = modelConfig();
+  if (!apiKey) {
+    return {
+      tool: "",
+      text: "Support has no model key.",
+      quote: "",
+    };
+  }
+  const provider = createOpenAI({
+    apiKey,
+    baseURL,
+    compatibility: "compatible",
+  });
+  const order = ordersForSession(db, customer.id)[0];
+  const tools = {
+    lookupOrders: tool({
+      description:
+        "Look up orders for the customer who is signed in. The session supplies the customer. This tool cannot look up a different customer.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const orders = ordersForSession(db, customer.id);
+        return {
+          customer: customer.name,
+          orders: orders.map((row) => ({
+            id: row.id,
+            item: row.item,
+            status: row.status,
+            detail: row.detail,
+          })),
+          note: "Limited to the signed-in customer.",
+        };
+      },
+    }),
+    searchRecords: tool({
+      description:
+        "Search tickets, earlier chats, and invoices for a help question. Use the record text in the reply.",
+      inputSchema: z.object({
+        query: z.string().min(1).max(500),
+      }),
+      execute: async ({ query }) => {
+        const boundId = scope === "session" ? customer.id : null;
+        const hits = searchRecords(db, query, boundId).slice(0, 3);
+        return {
+          scope: boundId ? customer.name : "tickets, chats, and invoices",
+          records: hits.map((hit) => ({ kind: hit.kind, text: hit.text })),
+        };
+      },
+    }),
+  };
+  const messages = history.slice(-8).map((message) => ({
+    role: message.role === "you" ? "user" : "assistant",
+    content: message.text,
+  }));
+  messages.push({ role: "user", content: text });
+  const result = await generateText({
+    model: provider.chat(modelId),
+    temperature: 0.2,
+    maxOutputTokens: 400,
+    maxRetries: 0,
+    stopWhen: stepCountIs(3),
+    system: [
+      `You are the support desk at Marlow Supply.`,
+      `The person you are talking to is signed in as ${customer.name} (${customer.email}).`,
+      `Call lookupOrders when they ask about an order, an order id, or another customer.`,
+      `That tool returns only the signed-in customer's orders. Say what it returned.`,
+      `If they asked about someone else, say you can only look up orders for the signed-in customer.`,
+      `Call searchRecords for any other help question.`,
+      `Quote the matching record's text verbatim. Do not add a fact the tool did not return.`,
+      `Use a tool before you answer.`,
+    ].join(" "),
+    messages,
+    tools,
+  });
+  const names = result.steps.flatMap((step) => step.toolCalls?.map((call) => call.toolName) ?? []);
+  let label = "";
+  if (names.includes("lookupOrders")) label = `Orders · ${customer.name} · ${order.id}`;
+  else if (names.includes("searchRecords")) {
+    label = scope === "session"
+      ? `Search · ${customer.name} · tickets, chats, and invoices`
+      : "Search · tickets, chats, and invoices";
+  }
+  const searched = result.steps.flatMap((step) => step.toolResults ?? []);
+  const record = searched
+    .map((item) => item.output?.records?.[0]?.text)
+    .find(Boolean) ?? "";
+  const reply = (result.text || "").trim();
+  return {
+    tool: label,
+    text: reply || record || "I could not read a record.",
+    quote: "",
+  };
+}
