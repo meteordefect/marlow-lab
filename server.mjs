@@ -3,13 +3,14 @@ import { readFileSync, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { answer } from "./agent.mjs";
+import { answer, assertScreen, classifyQuestion, screenQuestion } from "./agent.mjs";
 import {
   addMessage,
   checkFixture,
   createSession,
   customerByEmail,
   deleteSession,
+  getDesk,
   getScope,
   messagesFor,
   openDb,
@@ -17,6 +18,7 @@ import {
   ordersForSession,
   present,
   sessionCustomer,
+  setDesk,
   setScope,
   ticketFor,
 } from "./db.mjs";
@@ -40,6 +42,7 @@ loadEnv(join(ROOT, ".env"));
 
 const { db, pdfs } = openDb(here);
 checkFixture(db);
+assertScreen();
 
 function passwordOk(stored, given) {
   const a = createHash("sha256").update(stored).digest();
@@ -135,11 +138,24 @@ const server = createServer(async (req, res) => {
       send(res, 200, `${getScope(db)}\n`, "text/plain; charset=utf-8");
       return;
     }
+    if (path === "/_lab/desk" && (req.method === "GET" || req.method === "POST")) {
+      if (req.method === "POST") {
+        const value = (await readBody(req)).toString("utf8").trim().toLowerCase();
+        if (value !== "open" && value !== "guarded") {
+          send(res, 400, "use open or guarded\n", "text/plain; charset=utf-8");
+          return;
+        }
+        setDesk(db, value);
+        console.log(`desk is now ${value}`);
+      }
+      send(res, 200, `${getDesk(db)}\n`, "text/plain; charset=utf-8");
+      return;
+    }
     if (req.method === "GET" && (path === "/" || path === "/shop")) {
       send(res, 200, home(view), "text/html; charset=utf-8");
       return;
     }
-    const shopMatch = path.match(/^\/shop\/([a-z0-9]+)$/);
+    const shopMatch = path.match(/^\/shop\/([a-z0-9-]+)$/);
     if (req.method === "GET" && shopMatch) {
       const good = goodBySlug(shopMatch[1]);
       send(res, good ? 200 : 404, good ? productPage(view, good) : catalogMiss(view), "text/html; charset=utf-8");
@@ -250,7 +266,19 @@ const server = createServer(async (req, res) => {
       addMessage(db, token, { role: "you", text, tool: "", quote: "" });
       let reply;
       try {
-        reply = await answer(db, view, prior, text, getScope(db));
+        const desk = getDesk(db);
+        if (desk === "guarded") {
+          const screened = screenQuestion(text);
+          if (screened.stop) reply = { tool: screened.tool, text: screened.text, quote: "" };
+          else {
+            const judged = await classifyQuestion(text);
+            reply = judged.stop
+              ? { tool: judged.tool, text: judged.text, quote: "" }
+              : await answer(db, view, prior, text, getScope(db));
+          }
+        } else {
+          reply = await answer(db, view, prior, text, getScope(db));
+        }
       } catch (error) {
         console.log(`desk failed: ${error.message}`);
         const text = /balance|resource package/i.test(error.message)
@@ -273,9 +301,11 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   const key = process.env.MARLOW_API_KEY || process.env.GLM_API_KEY;
   console.log(`Marlow listening on http://${HOST}:${PORT}`);
-  console.log("Search scope: company");
+  console.log(`Search scope: ${getScope(db)}`);
+  console.log(`Desk: ${getDesk(db)}`);
   console.log(`Model: ${process.env.MARLOW_MODEL || "glm-5.3-flash"} (${key ? "key set" : "no key"})`);
   console.log("Avery Chen  avery@marlow.test  avery");
   console.log("Blake Okonkwo  blake@marlow.test  blake");
   console.log(`Bind search to the session: curl -s -X POST http://${HOST}:${PORT}/_lab/search-scope -d session`);
+  console.log(`Guard the desk: curl -s -X POST http://${HOST}:${PORT}/_lab/desk -d guarded`);
 });

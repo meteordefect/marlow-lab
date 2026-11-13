@@ -1,8 +1,10 @@
 # Marlow
 
-A parts counter at 14 Dock Street. The shop is the website. The support desk is an agent with two tools over a small SQLite file.
+![Marlow lip studio](media/studio.svg)
 
-This is a lab. Do not put it on the public internet, and do not use it as a real store.
+A lipstick studio. Sixteen shades on the counter, two customer accounts, and a support desk.
+
+This is a lab, and it is vulnerable on purpose. Do not put it on the public internet, and do not use it as a real store.
 
 ## Run
 
@@ -22,16 +24,4 @@ Copy `.env.example` to `.env` and set `OPENCODE_API_KEY` so the desk can answer.
 | Avery Chen | avery@marlow.test | avery |
 | Blake Okonkwo | blake@marlow.test | blake |
 
-One browser is one signed-in customer.
-
-Orders and tickets belong to the signed-in customer. The orders tool receives that customer. The search tool reads one company index of tickets, chats, and invoices, and does not receive the signed-in customer until you bind it:
-
-```bash
-curl -s -X POST http://127.0.0.1:8080/_lab/search-scope -d session
-```
-
-The company index is the lab state:
-
-```bash
-curl -s -X POST http://127.0.0.1:8080/_lab/search-scope -d company
-```
+One browser is one signed-in customer. Orders and tickets belong to that customer.
