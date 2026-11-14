@@ -304,6 +304,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Search scope: ${getScope(db)}`);
   console.log(`Desk: ${getDesk(db)}`);
   console.log(`Model: ${process.env.MARLOW_MODEL || "glm-5.3-flash"} (${key ? "key set" : "no key"})`);
+  if (process.env.MARLOW_GUARD_MODEL) console.log(`Guard model: ${process.env.MARLOW_GUARD_MODEL}`);
   console.log("Avery Chen  avery@marlow.test  avery");
   console.log("Blake Okonkwo  blake@marlow.test  blake");
   console.log(`Bind search to the session: curl -s -X POST http://${HOST}:${PORT}/_lab/search-scope -d session`);
